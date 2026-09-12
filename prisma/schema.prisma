@@ -1,0 +1,1075 @@
+generator client {
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "rhel-openssl-1.0.x"]
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto, uuid_ossp]
+}
+
+enum UserRole {
+  USER
+  CREATOR
+  MODERATOR
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum VideoStatus {
+  DRAFT
+  PROCESSING
+  PUBLISHED
+  SCHEDULED
+  UNLISTED
+  PRIVATE
+  ARCHIVED
+  DELETED
+  FLAGGED
+}
+
+enum LiveStatus {
+  IDLE
+  SCHEDULED
+  PREPARING
+  LIVE
+  ENDING
+  ENDED
+  FAILED
+  CANCELLED
+}
+
+enum PodcastStatus {
+  DRAFT
+  PROCESSING
+  PUBLISHED
+  SCHEDULED
+  ARCHIVED
+  DELETED
+}
+
+enum ArticleStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  SCHEDULED
+  ARCHIVED
+  DELETED
+}
+
+enum MonetizationType {
+  NONE
+  ADS
+  SUBSCRIPTION
+  TIPS
+  MERCHANDISE
+  PREMIUM_CONTENT
+  COURSES
+  AFFILIATE
+}
+
+enum ContentType {
+  VIDEO
+  PODCAST
+  ARTICLE
+  LIVE_STREAM
+  SHORT
+  REEL
+  STORY
+}
+
+enum AdStatus {
+  DRAFT
+  PENDING
+  ACTIVE
+  PAUSED
+  COMPLETED
+  REJECTED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+  DISPUTED
+}
+
+enum SubscriptionTier {
+  FREE
+  BASIC
+  STANDARD
+  PREMIUM
+  ENTERPRISE
+}
+
+enum ContentVisibility {
+  PUBLIC
+  UNLISTED
+  PRIVATE
+  SUBSCRIBERS_ONLY
+  PREMIUM_ONLY
+}
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  username      String?   @unique
+  displayName   String?
+  avatar        String?
+  coverImage    String?
+  bio           String?   @db.Text
+  location      String?
+  website       String?
+  socialLinks   Json?
+  role          UserRole  @default(USER)
+  isActive      Boolean   @default(true)
+  isVerified    Boolean   @default(false)
+  isPremium     Boolean   @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts          Account[]
+  sessions          Session[]
+  channels          Channel[]
+  videos            Video[]
+  videoComments     VideoComment[]
+  videoLikes        VideoLike[]
+  videoShares       VideoShare[]
+  playlists         Playlist[]
+  liveStreams       LiveStream[]
+  liveChats         LiveChat[]
+  liveDonations     LiveDonation[]
+  liveViewers       LiveViewer[]
+  podcasts          Podcast[]
+  podcastEpisodes   PodcastEpisode[]
+  podcastSubscriptions PodcastSubscription[]
+  articles          Article[]
+  articleComments   ArticleComment[]
+  articleLikes      ArticleLike[]
+  mediaAssets       MediaAsset[]
+  mediaFolders      MediaFolder[]
+  contentSchedules  ContentSchedule[]
+  subscribers       Subscriber[]        @relation("ChannelSubscribers")
+  subscriptions     Subscriber[]        @relation("UserSubscriptions")
+  channelSubscriptions ChannelSubscription[]
+  notifications     Notification[]
+  notificationPreferences NotificationPreference[]
+  donations         Donation[]
+  donationGoals     DonationGoal[]
+  brandDeals        BrandDeal[]
+  revenues          Revenue[]
+  auditLogs         AuditLog[]
+  reports           Report[]
+  reportsFiled      Report[]            @relation("FiledReports")
+  donationsSent     Donation[]          @relation("DonationSender")
+  monetizations     Monetization[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique
+  userId       String   @db.Uuid
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Channel {
+  id            String          @id @default(uuid()) @db.Uuid
+  userId        String          @db.Uuid
+  name          String
+  slug          String          @unique
+  description   String?         @db.Text
+  avatar        String?
+  coverImage    String?
+  isVerified    Boolean         @default(false)
+  isPartner     Boolean         @default(false)
+  subscriberCount Int           @default(0)
+  viewCount     Int             @default(0)
+  videoCount    Int             @default(0)
+  monetizationType MonetizationType @default(NONE)
+  defaultVisibility ContentVisibility @default(PUBLIC)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptions       ChannelSubscription[]
+  analytics           ChannelAnalytics[]
+  videos              Video[]
+  playlists           Playlist[]
+  liveStreams         LiveStream[]
+  podcasts            Podcast[]
+  articles            Article[]
+  contentSeries       ContentSeries[]
+  subscribers         Subscriber[]
+
+  @@unique([userId, slug])
+  @@map("channels")
+}
+
+model ChannelSubscription {
+  id          String   @id @default(uuid()) @db.Uuid
+  channelId   String   @db.Uuid
+  subscriberId String  @db.Uuid
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  channel    Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  subscriber User    @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, subscriberId])
+  @@map("channel_subscriptions")
+}
+
+model ChannelAnalytics {
+  id            String   @id @default(uuid()) @db.Uuid
+  channelId     String   @db.Uuid
+  date          DateTime @db.Date
+  views         Int      @default(0)
+  uniqueViews   Int      @default(0)
+  watchTime     Float    @default(0)
+  subscribers   Int      @default(0)
+  revenue       Float    @default(0)
+  engagementRate Float   @default(0)
+  topCountries  Json?
+  topDevices    Json?
+  trafficSources Json?
+  createdAt     DateTime @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, date])
+  @@map("channel_analytics")
+}
+
+model Video {
+  id              String      @id @default(uuid()) @db.Uuid
+  channelId       String      @db.Uuid
+  title           String
+  slug            String
+  description     String?     @db.Text
+  thumbnail       String?
+  videoUrl        String?
+  duration        Int?
+  fileSize        BigInt?
+  status          VideoStatus @default(DRAFT)
+  visibility      ContentVisibility @default(PUBLIC)
+  isPremium       Boolean     @default(false)
+  isFeatured      Boolean     @default(false)
+  viewCount       Int         @default(0)
+  likeCount       Int         @default(0)
+  commentCount    Int         @default(0)
+  shareCount      Int         @default(0)
+  dislikeCount    Int         @default(0)
+  publishedAt     DateTime?
+  scheduledAt     DateTime?
+  aiSummary       String?     @db.Text
+  aiTags          Json?
+  aiTranscript    String?     @db.Text
+  seoTitle        String?
+  seoDescription  String?     @db.Text
+  seoKeywords     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  channel           Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  category          VideoCategory?    @relation(fields: [categoryId], references: [id])
+  categoryId        String?
+  tags              VideoTag[]
+  subtitles         VideoSubtitle[]
+  analytics         VideoAnalytics[]
+  comments          VideoComment[]
+  likes             VideoLike[]
+  shares            VideoShare[]
+  playlistItems     PlaylistItem[]
+  mediaAssets       MediaAsset[]
+  contentSeries     ContentSeries?    @relation(fields: [contentSeriesId], references: [id])
+  contentSeriesId   String?
+  brandDeals        BrandDeal[]
+
+  @@unique([channelId, slug])
+  @@map("videos")
+}
+
+model VideoCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  icon        String?
+  parentId    String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   VideoCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children VideoCategory[] @relation("CategoryTree")
+  videos   Video[]
+
+  @@map("video_categories")
+}
+
+model VideoTag {
+  id        String   @id @default(uuid()) @db.Uuid
+  videoId   String   @db.Uuid
+  tag       String
+  createdAt DateTime @default(now())
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, tag])
+  @@map("video_tags")
+}
+
+model VideoSubtitle {
+  id        String   @id @default(uuid()) @db.Uuid
+  videoId   String   @db.Uuid
+  language  String
+  label     String
+  url       String?
+  content   String?  @db.Text
+  format    String   @default("vtt")
+  isAuto    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, language])
+  @@map("video_subtitles")
+}
+
+model VideoAnalytics {
+  id            String   @id @default(uuid()) @db.Uuid
+  videoId       String   @db.Uuid
+  date          DateTime @db.Date
+  views         Int      @default(0)
+  uniqueViews   Int      @default(0)
+  watchTime     Float    @default(0)
+  avgWatchTime  Float    @default(0)
+  retentionRate Float    @default(0)
+  likes         Int      @default(0)
+  comments      Int      @default(0)
+  shares        Int      @default(0)
+  clicks        Int      @default(0)
+  ctr           Float    @default(0)
+  trafficSources Json?
+  topCountries  Json?
+  topDevices    Json?
+  createdAt     DateTime @default(now())
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, date])
+  @@map("video_analytics")
+}
+
+model VideoComment {
+  id        String         @id @default(uuid()) @db.Uuid
+  videoId   String         @db.Uuid
+  userId    String         @db.Uuid
+  parentId  String?
+  content   String         @db.Text
+  isPinned  Boolean        @default(false)
+  isHidden  Boolean        @default(false)
+  likeCount Int            @default(0)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  video    Video          @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   VideoComment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies  VideoComment[] @relation("CommentReplies")
+  likes    VideoLike[]
+
+  @@map("video_comments")
+}
+
+model VideoLike {
+  id        String   @id @default(uuid()) @db.Uuid
+  videoId   String   @db.Uuid
+  userId    String   @db.Uuid
+  commentId String?
+  type      String   @default("like")
+  createdAt DateTime @default(now())
+
+  video   Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment VideoComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, userId])
+  @@map("video_likes")
+}
+
+model VideoShare {
+  id        String   @id @default(uuid()) @db.Uuid
+  videoId   String   @db.Uuid
+  userId    String?  @db.Uuid
+  platform  String
+  referrer  String?
+  createdAt DateTime @default(now())
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("video_shares")
+}
+
+model Playlist {
+  id          String            @id @default(uuid()) @db.Uuid
+  channelId   String            @db.Uuid
+  title       String
+  description String?           @db.Text
+  thumbnail   String?
+  visibility  ContentVisibility @default(PUBLIC)
+  itemCount   Int               @default(0)
+  viewCount   Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  channel Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  items   PlaylistItem[]
+
+  @@map("playlists")
+}
+
+model PlaylistItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  playlistId  String   @db.Uuid
+  videoId     String   @db.Uuid
+  position    Int
+  createdAt   DateTime @default(now())
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  video    Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, videoId])
+  @@unique([playlistId, position])
+  @@map("playlist_items")
+}
+
+model LiveStream {
+  id              String     @id @default(uuid()) @db.Uuid
+  channelId       String     @db.Uuid
+  userId          String     @db.Uuid
+  title           String
+  description     String?    @db.Text
+  thumbnail       String?
+  streamKey       String     @unique
+  streamUrl       String?
+  playbackUrl     String?
+  status          LiveStatus @default(IDLE)
+  isScheduled     Boolean    @default(false)
+  scheduledAt     DateTime?
+  startedAt       DateTime?
+  endedAt         DateTime?
+  duration        Int?
+  peakViewers     Int        @default(0)
+  totalViewers    Int        @default(0)
+  chatEnabled     Boolean    @default(true)
+  donationsEnabled Boolean  @default(true)
+  isPremium       Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  channel  Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chats    LiveChat[]
+  donations LiveDonation[]
+  viewers  LiveViewer[]
+
+  @@map("live_streams")
+}
+
+model LiveChat {
+  id         String   @id @default(uuid()) @db.Uuid
+  streamId   String   @db.Uuid
+  userId     String   @db.Uuid
+  message    String
+  isSuperChat Boolean @default(false)
+  amount     Float?
+  color      String?
+  isDeleted  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  stream LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("live_chats")
+}
+
+model LiveDonation {
+  id        String        @id @default(uuid()) @db.Uuid
+  streamId  String        @db.Uuid
+  senderId  String        @db.Uuid
+  amount    Float
+  message   String?
+  isPublic  Boolean       @default(true)
+  status    PaymentStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+
+  stream LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  sender User       @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@map("live_donations")
+}
+
+model LiveViewer {
+  id        String   @id @default(uuid()) @db.Uuid
+  streamId  String   @db.Uuid
+  userId    String?  @db.Uuid
+  ipAddress String?
+  userAgent String?
+  watchTime Int      @default(0)
+  joinedAt  DateTime @default(now())
+  leftAt    DateTime?
+
+  stream LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  user   User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("live_viewers")
+}
+
+model Podcast {
+  id            String        @id @default(uuid()) @db.Uuid
+  channelId     String        @db.Uuid
+  title         String
+  slug          String
+  description   String?       @db.Text
+  coverImage    String?
+  status        PodcastStatus @default(DRAFT)
+  visibility    ContentVisibility @default(PUBLIC)
+  episodeCount  Int           @default(0)
+  subscriberCount Int         @default(0)
+  totalDownloads Int          @default(0)
+  feedUrl       String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  channel       Channel              @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  episodes      PodcastEpisode[]
+  subscriptions PodcastSubscription[]
+
+  @@unique([channelId, slug])
+  @@map("podcasts")
+}
+
+model PodcastEpisode {
+  id            String        @id @default(uuid()) @db.Uuid
+  podcastId     String        @db.Uuid
+  title         String
+  slug          String
+  description   String?       @db.Text
+  audioUrl      String?
+  duration      Int?
+  fileSize      BigInt?
+  episodeNumber Int
+  seasonNumber  Int?
+  status        PodcastStatus @default(DRAFT)
+  publishedAt   DateTime?
+  downloadCount Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  podcast Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  String  @db.Uuid
+
+  @@unique([podcastId, episodeNumber])
+  @@map("podcast_episodes")
+}
+
+model PodcastSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  podcastId String   @db.Uuid
+  userId    String   @db.Uuid
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  podcast Podcast @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([podcastId, userId])
+  @@map("podcast_subscriptions")
+}
+
+model Article {
+  id            String        @id @default(uuid()) @db.Uuid
+  channelId     String        @db.Uuid
+  userId        String        @db.Uuid
+  title         String
+  slug          String
+  content       String        @db.Text
+  excerpt       String?       @db.Text
+  coverImage    String?
+  status        ArticleStatus @default(DRAFT)
+  visibility    ContentVisibility @default(PUBLIC)
+  isPremium     Boolean       @default(false)
+  readTime      Int?
+  viewCount     Int           @default(0)
+  likeCount     Int           @default(0)
+  commentCount  Int           @default(0)
+  publishedAt   DateTime?
+  scheduledAt   DateTime?
+  seoTitle      String?
+  seoDescription String?      @db.Text
+  seoKeywords   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  channel  Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comments ArticleComment[]
+  likes    ArticleLike[]
+
+  @@unique([channelId, slug])
+  @@map("articles")
+}
+
+model ArticleComment {
+  id        String         @id @default(uuid()) @db.Uuid
+  articleId String         @db.Uuid
+  userId    String         @db.Uuid
+  parentId  String?
+  content   String         @db.Text
+  isHidden  Boolean        @default(false)
+  likeCount Int            @default(0)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  article Article          @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  ArticleComment?  @relation("ArticleCommentReplies", fields: [parentId], references: [id])
+  replies ArticleComment[] @relation("ArticleCommentReplies")
+  likes   ArticleLike[]
+
+  @@map("article_comments")
+}
+
+model ArticleLike {
+  id        String   @id @default(uuid()) @db.Uuid
+  articleId String   @db.Uuid
+  userId    String   @db.Uuid
+  commentId String?
+  createdAt DateTime @default(now())
+
+  article Article          @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment ArticleComment?  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, userId])
+  @@map("article_likes")
+}
+
+model MediaAsset {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  folderId    String?
+  filename    String
+  originalName String
+  mimeType    String
+  fileSize    BigInt
+  url         String
+  cdnUrl      String?
+  alt         String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder   MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  video    Video?      @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  videoId  String?
+  processing MediaProcessing[]
+
+  @@map("media_assets")
+}
+
+model MediaFolder {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  name      String
+  parentId  String?
+  path      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  MediaFolder? @relation("FolderTree", fields: [parentId], references: [id])
+  children MediaFolder[] @relation("FolderTree")
+  assets  MediaAsset[]
+
+  @@unique([userId, path])
+  @@map("media_folders")
+}
+
+model MediaProcessing {
+  id         String   @id @default(uuid()) @db.Uuid
+  assetId    String   @db.Uuid
+  status     String   @default("pending")
+  progress   Float    @default(0)
+  inputUrl   String
+  outputUrl  String?
+  settings   Json?
+  error      String?  @db.Text
+  startedAt  DateTime?
+  completedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  asset MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@map("media_processing")
+}
+
+model ContentSchedule {
+  id          String      @id @default(uuid()) @db.Uuid
+  userId      String      @db.Uuid
+  contentType ContentType
+  contentId   String
+  scheduledAt DateTime
+  publishedAt DateTime?
+  status      String      @default("pending")
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("content_schedules")
+}
+
+model ContentSeries {
+  id          String   @id @default(uuid()) @db.Uuid
+  channelId   String   @db.Uuid
+  title       String
+  slug        String
+  description String?  @db.Text
+  coverImage  String?
+  isActive    Boolean  @default(true)
+  videoCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  videos  Video[]
+
+  @@unique([channelId, slug])
+  @@map("content_series")
+}
+
+model Monetization {
+  id             String           @id @default(uuid()) @db.Uuid
+  channelId      String           @db.Uuid
+  userId         String           @db.Uuid
+  type           MonetizationType
+  isActive       Boolean          @default(false)
+  settings       Json?
+  totalRevenue   Float            @default(0)
+  monthlyRevenue Float            @default(0)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plans   MonetizationPlan[]
+  subscribers Subscriber[]
+
+  @@unique([channelId, type])
+  @@map("monetizations")
+}
+
+model MonetizationPlan {
+  id              String   @id @default(uuid()) @db.Uuid
+  monetizationId  String   @db.Uuid
+  name            String
+  description     String?  @db.Text
+  price           Float
+  currency        String   @default("USD")
+  interval        String   @default("monthly")
+  features        Json?
+  isActive        Boolean  @default(true)
+  subscriberCount Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  monetization Monetization @relation(fields: [monetizationId], references: [id], onDelete: Cascade)
+  subscribers  Subscriber[]
+
+  @@map("monetization_plans")
+}
+
+model Subscriber {
+  id             String   @id @default(uuid()) @db.Uuid
+  channelId      String   @db.Uuid
+  subscriberId   String   @db.Uuid
+  monetizationId String?
+  planId         String?
+  tier           SubscriptionTier @default(FREE)
+  isActive       Boolean  @default(true)
+  expiresAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  channel     Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  subscriber  User             @relation("ChannelSubscribers", fields: [subscriberId], references: [id], onDelete: Cascade)
+  user        User             @relation("UserSubscriptions", fields: [subscriberId], references: [id], onDelete: Cascade)
+  monetization Monetization?   @relation(fields: [monetizationId], references: [id], onDelete: SetNull)
+  plan         MonetizationPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@unique([channelId, subscriberId])
+  @@map("subscribers")
+}
+
+model Donation {
+  id          String        @id @default(uuid()) @db.Uuid
+  senderId    String        @db.Uuid
+  receiverId  String        @db.Uuid
+  amount      Float
+  currency    String        @default("USD")
+  message     String?       @db.Text
+  isAnonymous Boolean       @default(false)
+  status      PaymentStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  sender   User        @relation("DonationSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User        @relation(fields: [receiverId], references: [id], onDelete: Cascade)
+  goal     DonationGoal? @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  goalId   String?
+
+  @@map("donations")
+}
+
+model DonationGoal {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  title       String
+  description String?  @db.Text
+  targetAmount Float
+  currentAmount Float  @default(0)
+  isActive    Boolean  @default(true)
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  donations Donation[]
+
+  @@map("donation_goals")
+}
+
+model BrandDeal {
+  id          String   @id @default(uuid()) @db.Uuid
+  channelId   String   @db.Uuid
+  brandName   String
+  contactEmail String?
+  title       String
+  description String?  @db.Text
+  budget      Float
+  startDate   DateTime
+  endDate     DateTime
+  status      String   @default("pending")
+  deliverables Json?
+  metrics     Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  channel Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  videos  Video[]
+  metrics_ BrandDealMetric[]
+
+  @@map("brand_deals")
+}
+
+model BrandDealMetric {
+  id          String   @id @default(uuid()) @db.Uuid
+  brandDealId String   @db.Uuid
+  date        DateTime @db.Date
+  views       Int      @default(0)
+  clicks      Int      @default(0)
+  impressions Int      @default(0)
+  revenue     Float    @default(0)
+  createdAt   DateTime @default(now())
+
+  brandDeal BrandDeal @relation(fields: [brandDealId], references: [id], onDelete: Cascade)
+
+  @@map("brand_deal_metrics")
+}
+
+model AdCampaign {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  advertiser  String
+  budget      Float
+  spent       Float     @default(0)
+  status      AdStatus  @default(DRAFT)
+  startDate   DateTime
+  endDate     DateTime
+  targeting   Json?
+  creative    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  impressions AdImpression[]
+
+  @@map("ad_campaigns")
+}
+
+model AdImpression {
+  id         String   @id @default(uuid()) @db.Uuid
+  campaignId String   @db.Uuid
+  userId     String?
+  videoId    String?
+  impression Boolean  @default(false)
+  click      Boolean  @default(false)
+  revenue    Float    @default(0)
+  createdAt  DateTime @default(now())
+
+  campaign AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("ad_impressions")
+}
+
+model Revenue {
+  id          String        @id @default(uuid()) @db.Uuid
+  userId      String        @db.Uuid
+  source      String
+  amount      Float
+  currency    String        @default("USD")
+  status      PaymentStatus @default(PENDING)
+  period      String
+  metadata    Json?
+  paidAt      DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source_ RevenueSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  sourceId String?
+
+  @@map("revenues")
+}
+
+model RevenueSource {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  type        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  revenues Revenue[]
+
+  @@map("revenue_sources")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  type      String
+  title     String
+  message   String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @db.Uuid
+  emailEnabled   Boolean  @default(true)
+  pushEnabled    Boolean  @default(true)
+  smsEnabled     Boolean  @default(false)
+  types          Json?
+  quietHoursStart String?
+  quietHoursEnd  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @db.Uuid
+  action     String
+  resource   String
+  resourceId String?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([resource, resourceId])
+  @@map("audit_logs")
+}
+
+model Report {
+  id          String   @id @default(uuid()) @db.Uuid
+  reporterId  String   @db.Uuid
+  targetType  String
+  targetId    String
+  reason      String
+  description String?  @db.Text
+  status      String   @default("pending")
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reporter User @relation("FiledReports", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([targetType, targetId])
+  @@map("reports")
+}
